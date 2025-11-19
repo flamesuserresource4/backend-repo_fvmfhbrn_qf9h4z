@@ -1,18 +1,13 @@
 INFO:     Will watch for changes in these directories: ['/home/workspace']
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [496] using StatReload
-INFO:     Started server process [498]
+INFO:     Started reloader process [542] using StatReload
+INFO:     Started server process [544]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     172.20.0.1:47164 - "GET /auth/me HTTP/1.1" 401 Unauthorized
-INFO:     172.20.0.1:47164 - "GET /auth/me HTTP/1.1" 401 Unauthorized
-INFO:     172.20.0.1:47168 - "HEAD / HTTP/1.1" 405 Method Not Allowed
-INFO:     172.20.0.1:53536 - "GET /auth/me HTTP/1.1" 401 Unauthorized
-INFO:     172.20.0.1:53536 - "GET /auth/me HTTP/1.1" 401 Unauthorized
-INFO:     172.20.0.1:44902 - "OPTIONS /auth/bootstrap-admin HTTP/1.1" 200 OK
-INFO:     172.20.0.1:44902 - "POST /auth/bootstrap-admin HTTP/1.1" 401 Unauthorized
-INFO:     172.20.0.1:44902 - "GET /auth/me HTTP/1.1" 401 Unauthorized
-INFO:     172.20.0.1:60744 - "POST /auth/bootstrap-admin HTTP/1.1" 401 Unauthorized
-INFO:     172.20.0.1:60744 - "GET /auth/me HTTP/1.1" 401 Unauthorized
-INFO:     172.20.0.1:60744 - "POST /auth/bootstrap-admin HTTP/1.1" 401 Unauthorized
-INFO:     172.20.0.1:60744 - "GET /auth/me HTTP/1.1" 401 Unauthorized
+INFO:     172.20.0.1:43596 - "HEAD / HTTP/1.1" 405 Method Not Allowed
+INFO:     172.20.0.1:38386 - "GET /auth/me HTTP/1.1" 401 Unauthorized
+INFO:     172.20.0.1:38386 - "GET /auth/me HTTP/1.1" 401 Unauthorized
+INFO:     172.20.0.1:33884 - "GET /auth/me HTTP/1.1" 401 Unauthorized
+INFO:     172.20.0.1:33884 - "GET /auth/me HTTP/1.1" 401 Unauthorized
+INFO:     172.20.0.1:46074 - "POST /auth/bootstrap-admin HTTP/1.1" 401 Unauthorized
+INFO:     172.20.0.1:46074 - "GET /auth/me HTTP/1.1" 401 Unauthorized
