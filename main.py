@@ -86,6 +86,28 @@ def get_admin_user(user: dict = Depends(get_current_user)) -> dict:
 
 
 # ---------------------------
+# Startup bootstrap: promote configured email to admin if no admin exists
+# ---------------------------
+@app.on_event("startup")
+def bootstrap_admin_on_startup():
+    try:
+        if db is None:
+            return
+        existing_admin = db["saasuser"].find_one({"role": "admin"})
+        if existing_admin:
+            return
+        email = os.getenv("BOOTSTRAP_ADMIN_EMAIL")
+        if not email:
+            return
+        user = db["saasuser"].find_one({"email": email})
+        if user:
+            db["saasuser"].update_one({"_id": user["_id"]}, {"$set": {"role": "admin", "updated_at": time.time()}})
+    except Exception:
+        # Silent fail to avoid blocking startup
+        pass
+
+
+# ---------------------------
 # Models
 # ---------------------------
 class SignupPayload(BaseModel):
