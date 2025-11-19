@@ -4,15 +4,14 @@ import time
 import hmac
 import hashlib
 import base64
-from typing import List, Optional, Dict, Any
+from typing import Optional, Dict, Any
 
 import requests
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
-from urllib.parse import urlencode
 
-from database import db, create_document, get_documents
+from database import db, create_document
 
 try:
     from bs4 import BeautifulSoup  # type: ignore
@@ -80,6 +79,12 @@ def get_current_user(x_auth_token: Optional[str] = Header(default=None)) -> Opti
     return user
 
 
+def get_admin_user(user: dict = Depends(get_current_user)) -> dict:
+    if user.get("role", "user") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
 # ---------------------------
 # Models
 # ---------------------------
@@ -110,6 +115,16 @@ class ProposalPayload(BaseModel):
     category: Optional[str] = None
 
 
+class UpdatePlanPayload(BaseModel):
+    email: EmailStr
+    plan: str
+
+
+class UpdateRolePayload(BaseModel):
+    email: EmailStr
+    role: str  # user | admin
+
+
 # ---------------------------
 # Auth endpoints
 # ---------------------------
@@ -125,10 +140,11 @@ def signup(payload: SignupPayload):
         "password_hash": hash_password(payload.password),
         "name": payload.name,
         "plan": "free",
+        "role": "user",
     }
     create_document("saasuser", doc)
     token = make_token(payload.email)
-    return {"token": token, "email": payload.email, "plan": "free"}
+    return {"token": token, "email": payload.email, "plan": "free", "role": "user"}
 
 
 @app.post("/auth/login")
@@ -141,7 +157,27 @@ def login(payload: LoginPayload):
     if user.get("password_hash") != hash_password(payload.password):
         raise HTTPException(status_code=400, detail="Invalid credentials")
     token = make_token(payload.email)
-    return {"token": token, "email": payload.email, "plan": user.get("plan", "free")}
+    return {"token": token, "email": payload.email, "plan": user.get("plan", "free"), "role": user.get("role", "user")}
+
+
+@app.get("/auth/me")
+def me(user=Depends(get_current_user)):
+    return {"email": user.get("email"), "plan": user.get("plan", "free"), "role": user.get("role", "user")}
+
+
+@app.post("/auth/bootstrap-admin")
+def bootstrap_admin(user=Depends(get_current_user)):
+    """
+    Promote the current authenticated user to admin if no admin exists yet.
+    Safe bootstrap to create the first admin.
+    """
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    existing_admin = db["saasuser"].find_one({"role": "admin"})
+    if existing_admin:
+        raise HTTPException(status_code=403, detail="Admin already exists")
+    db["saasuser"].update_one({"_id": user["_id"]}, {"$set": {"role": "admin", "updated_at": time.time()}})
+    return {"ok": True, "role": "admin"}
 
 
 # ---------------------------
@@ -416,38 +452,15 @@ def structure_to_html(structure: Dict[str, Any]) -> str:
   <title>{hero.get('headline','Redesign Proposal')}</title>
   <script src=\"https://cdn.tailwindcss.com\"></script>
 </head>
-<body class=\"bg-slate-950 text-slate-100\">
-  <section class=\"px-6 py-20 text-center bg-gradient-to-b from-slate-900 to-slate-950\">
-    <h1 class=\"text-4xl md:text-6xl font-bold mb-4\">{hero.get('headline','')}</h1>
-    <p class=\"text-lg md:text-xl text-slate-300 max-w-2xl mx-auto\">{hero.get('subheadline','')}</p>
-    <a href=\"{hero.get('cta',{}).get('href','#contact')}\" class=\"inline-block mt-8 px-6 py-3 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-medium\">{hero.get('cta',{}).get('label','Get Started')}</a>
-  </section>
-
-  <section class=\"px-6 py-16 max-w-5xl mx-auto\">
-    <h2 class=\"text-3xl font-semibold mb-4\">{about.get('title','About')}</h2>
-    <p class=\"text-slate-300\">{about.get('body','')}</p>
-  </section>
-
-  <section class=\"px-6 py-16 max-w-5xl mx-auto\">
-    <h2 class=\"text-3xl font-semibold mb-8\">{services.get('title','Services')}</h2>
-    <div class=\"grid md:grid-cols-3 gap-6\">
-      {''.join([f'<div class=\\"p-6 rounded-xl bg-slate-900 border border-slate-800\\"><h3 class=\\"font-semibold mb-2\\">{it.get('title','')}</h3><p class=\\"text-slate-300\\">{it.get('desc','')}</p></div>' for it in services.get('items',[])])}
+<body class=\"bg-slate-950 text-slate-100\">\n  <section class=\"px-6 py-20 text-center bg-gradient-to-b from-slate-900 to-slate-950\">\n    <h1 class=\"text-4xl md:text-6xl font-bold mb-4\">{hero.get('headline','')}</h1>\n    <p class=\"text-lg md:text-xl text-slate-300 max-w-2xl mx-auto\">{hero.get('subheadline','')}</p>\n    <a href=\"{hero.get('cta',{}).get('href','#contact')}\" class=\"inline-block mt-8 px-6 py-3 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-medium\">{hero.get('cta',{}).get('label','Get Started')}</a>\n  </section>\n\n  <section class=\"px-6 py-16 max-w-5xl mx-auto\">\n    <h2 class=\"text-3xl font-semibold mb-4\">{about.get('title','About')}</h2>\n    <p class=\"text-slate-300\">{about.get('body','')}</p>\n  </section>\n\n  <section class=\"px-6 py-16 max-w-5xl mx-auto\">\n    <h2 class=\"text-3xl font-semibold mb-8\">{services.get('title','Services')}</h2>\n    <div class=\"grid md:grid-cols-3 gap-6\">\n      {''.join([f'<div class=\\"p-6 rounded-xl bg-slate-900 border border-slate-800\\"><h3 class=\\"font-semibold mb-2\\">{it.get('" + "title" + "','') }</h3><p class=\\"text-slate-300\\">{it.get('" + "desc" + "','')}</p></div>' for it in services.get('items',[])])}
     </div>
   </section>
 
-  <section class=\"px-6 py-16 max-w-5xl mx-auto\">
-    <h2 class=\"text-3xl font-semibold mb-6\">{why.get('title','Why Us')}</h2>
-    <ul class=\"grid md:grid-cols-3 gap-4\">
-      {''.join([f'<li class=\\"p-4 rounded-lg bg-slate-900 border border-slate-800\\">• {b}</li>' for b in why.get('bullets',[])])}
+  <section class=\"px-6 py-16 max-w-5xl mx-auto\">\n    <h2 class=\"text-3xl font-semibold mb-6\">{why.get('title','Why Us')}</h2>\n    <ul class=\"grid md:grid-cols-3 gap-4\">\n      {''.join([f'<li class=\\"p-4 rounded-lg bg-slate-900 border border-slate-800\\">• {b}</li>' for b in why.get('bullets',[])])}
     </ul>
   </section>
 
-  <section id=\"contact\" class=\"px-6 py-20 text-center bg-slate-900\">
-    <h2 class=\"text-3xl font-semibold mb-2\">{cta.get('title','')}</h2>
-    <p class=\"text-slate-300 mb-6\">{cta.get('subtitle','')}</p>
-    <a href=\"{cta.get('button',{}).get('href','#')}\" class=\"inline-block px-6 py-3 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-medium\">{cta.get('button',{}).get('label','Contact Us')}</a>
-  </section>
-
+  <section id=\"contact\" class=\"px-6 py-20 text-center bg-slate-900\">\n    <h2 class=\"text-3xl font-semibold mb-2\">{cta.get('title','')}</h2>\n    <p class=\"text-slate-300 mb-6\">{cta.get('subtitle','')}</p>\n    <a href=\"{cta.get('button',{}).get('href','#')}\" class=\"inline-block px-6 py-3 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-medium\">{cta.get('button',{}).get('label','Contact Us')}</a>\n  </section>\n
   <footer class=\"px-6 py-8 text-center text-slate-400\">{footer.get('copyright','')}</footer>
 </body>
 </html>
@@ -458,6 +471,53 @@ def structure_to_html(structure: Dict[str, Any]) -> str:
 def proposal_preview(payload: PreviewPayload, user=Depends(get_current_user)):
     html = structure_to_html(payload.structure)
     return {"html": html}
+
+
+# ---------------------------
+# Admin endpoints
+# ---------------------------
+@app.get("/admin/users")
+def admin_list_users(admin=Depends(get_admin_user)):
+    users = []
+    if db is None:
+        return {"users": users}
+    for u in db["saasuser"].find({}, {"password_hash": 0}).limit(200):
+        u["id"] = str(u.get("_id"))
+        users.append(u)
+    return {"users": users}
+
+
+@app.post("/admin/users/plan")
+def admin_update_plan(payload: UpdatePlanPayload, admin=Depends(get_admin_user)):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    res = db["saasuser"].update_one({"email": payload.email}, {"$set": {"plan": payload.plan, "updated_at": time.time()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"ok": True}
+
+
+@app.post("/admin/users/role")
+def admin_update_role(payload: UpdateRolePayload, admin=Depends(get_admin_user)):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    if payload.role not in ("user", "admin"):
+        raise HTTPException(status_code=400, detail="Invalid role")
+    res = db["saasuser"].update_one({"email": payload.email}, {"$set": {"role": payload.role, "updated_at": time.time()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"ok": True}
+
+
+@app.get("/admin/stats")
+def admin_stats(admin=Depends(get_admin_user)):
+    if db is None:
+        return {"users": 0, "analyses": 0, "proposals": 0}
+    return {
+        "users": db["saasuser"].count_documents({}),
+        "analyses": db["analysis"].count_documents({}),
+        "proposals": db["proposal"].count_documents({}),
+    }
 
 
 # ---------------------------

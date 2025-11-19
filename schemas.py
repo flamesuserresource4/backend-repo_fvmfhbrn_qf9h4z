@@ -15,6 +15,7 @@ class SaaSUser(BaseModel):
     name: Optional[str] = None
     onboarding: Optional[Dict[str, Any]] = None
     plan: str = Field(default="free")  # free, pro, agency
+    role: str = Field(default="user")  # user, admin
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
